@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Crescent Home Kitchen</title>
+<meta name="description" content="Order home-cooked lunch and dinner from Crescent Home Kitchen.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,700;0,9..144,800;1,9..144,500&family=DM+Sans:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="style.css">
+<style>
+.menu-head { display: flex; flex-direction: column; gap: 4px; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; background: var(--bg); border-radius: 12px; padding: 12px 14px; }
+.facts div { display: flex; flex-direction: column; font-size: 14px; color: var(--muted); }
+.facts strong { color: var(--ink); font-size: 16px; }
+.orderbar {
+  position: sticky; bottom: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px 12px 12px 18px;
+  margin-bottom: env(safe-area-inset-bottom, 0px); box-shadow: 0 -6px 18px rgba(58, 36, 16, 0.08);
+}
+.orderbar .sum { display: flex; flex-direction: column; line-height: 1.2; }
+.orderbar .sum span { font-size: 14px; color: var(--muted); }
+.orderbar .sum strong { font-family: var(--display); font-size: 26px; font-weight: 800; }
+.receipt { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.receipt li { display: flex; justify-content: space-between; gap: 12px; }
+.receipt li.total { border-top: 1px solid var(--line); padding-top: 8px; font-weight: 700; }
+.big { font-family: var(--display); font-weight: 800; font-size: 44px; line-height: 1; color: var(--accent); }
+form { display: flex; flex-direction: column; gap: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap narrow">
+  <header class="brand">
+    <span class="name">Crescent Home Kitchen</span>
+    <span class="tags"><span class="tag solid">Pure Veg</span><span class="tag">No Garlic</span></span>
+  </header>
+
+  <p id="loading" class="muted" role="status">Loading the menu…</p>
+  <div id="setup" class="banner" hidden>This page isn’t connected to the kitchen yet. If you run the kitchen, follow SETUP.md.</div>
+
+  <section id="none" class="card" hidden>
+    <h2>No orders open right now</h2>
+    <p class="muted">Keep an eye on the WhatsApp group for the next menu.</p>
+    <div class="actions"><button type="button" class="secondary" data-reload>Check again</button></div>
+  </section>
+
+  <section id="failed" class="card" hidden>
+    <h2>Couldn’t load the menu</h2>
+    <p class="muted" id="failedMsg"></p>
+    <div class="actions"><button type="button" class="secondary" data-reload>Try again</button></div>
+  </section>
+
+  <form id="orderForm" novalidate hidden>
+    <div class="seg" id="tabs" role="group" aria-label="Choose a meal" hidden></div>
+
+    <section class="card">
+      <div class="menu-head">
+        <h1 id="title"></h1>
+        <p class="muted" id="date"></p>
+      </div>
+      <div class="facts">
+        <div>Order by<strong id="orderBy"></strong></div>
+        <div>Pickup<strong id="pickup"></strong></div>
+        <div>Collect from<strong id="place"></strong></div>
+      </div>
+      <div id="picker"></div>
+    </section>
+
+    <section class="card">
+      <h2>Your details</h2>
+      <div class="fields one">
+        <label for="name">Name<input id="name" autocomplete="name" autocapitalize="words" maxlength="60" required></label>
+      </div>
+      <div class="fields">
+        <label for="phone">Phone<input id="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="10-digit mobile" required></label>
+        <label for="flat">Flat number<input id="flat" autocomplete="off" maxlength="30" placeholder="e.g. D-1203" required></label>
+      </div>
+      <label for="notes">Anything we should know? (optional)<textarea id="notes" maxlength="200" placeholder="e.g. less spicy, coming at 1:15"></textarea></label>
+      <p class="hint">Pay by UPI when you pick up. We’ll show you the QR code.</p>
+    </section>
+
+    <p class="status" id="status" role="status" aria-live="polite"></p>
+
+    <div class="orderbar">
+      <div class="sum"><span id="count">Nothing picked yet</span><strong id="total">₹0</strong></div>
+      <button type="submit" id="placeBtn" disabled>Place order</button>
+    </div>
+  </form>
+
+  <section id="done" class="card" hidden aria-live="polite">
+    <p class="big">Order placed</p>
+    <p>Order <strong id="dId"></strong> for <strong id="dWho"></strong></p>
+    <ul class="receipt" id="dItems"></ul>
+    <p id="dPickup"></p>
+    <p class="hint" id="dHelp"></p>
+    <div class="actions"><button type="button" class="secondary" id="again">Place another order</button></div>
+  </section>
+</div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script>
+(function () {
+  const C = Crescent, $ = id => document.getElementById(id);
+  const DETAILS = 'crescent-customer';
+  let menus = [], current = null;
+
+  const picker = C.Picker($('picker'), refreshBar);
+
+  function show(id) {
+    ['loading', 'setup', 'none', 'failed', 'orderForm', 'done'].forEach(x => { $(x).hidden = x !== id; });
+  }
+
+  function refreshBar() {
+    const n = picker.count(), b = picker.bill();
+    $('count').textContent = n ? C.plural(n, 'item') : 'Nothing picked yet';
+    $('total').textContent = C.rupees(b.total);
+    $('placeBtn').disabled = !n;
+  }
+
+  function choose(id) {
+    current = menus.find(m => m.id === id) || menus[0];
+    $('tabs').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.id === current.id)));
+    $('title').textContent = C.mealTitle(current.date, current.meal);
+    $('date').textContent = C.fmtDate(current.date);
+    $('orderBy').textContent = C.fmtTime(current.orderBy) || '—';
+    $('pickup').textContent = current.pickup || '—';
+    $('place').textContent = current.flat || '—';
+    picker.setMenu(current);
+  }
+
+  function load(keepId) {
+    if (!C.configured) return show('setup');
+    show('loading');
+    C.get('menus').then(d => {
+      menus = d.menus;
+      if (!menus.length) return show('none');
+      $('tabs').hidden = menus.length < 2;
+      $('tabs').innerHTML = menus.map(m => `<button type="button" data-id="${C.esc(m.id)}" aria-pressed="false">${C.esc(C.mealTitle(m.date, m.meal))}</button>`).join('');
+      show('orderForm');
+      choose(keepId);
+    }).catch(e => { $('failedMsg').textContent = e.message; show('failed'); });
+  }
+
+  $('tabs').addEventListener('click', e => {
+    const b = e.target.closest('button[data-id]');
+    if (b) { choose(b.dataset.id); $('status').textContent = ''; }
+  });
+  document.querySelectorAll('[data-reload]').forEach(b => b.addEventListener('click', () => load()));
+
+  const saved = C.store.get(DETAILS) || {};
+  ['name', 'phone', 'flat'].forEach(k => { $(k).value = saved[k] || ''; });
+
+  function say(msg, isError) {
+    $('status').textContent = msg;
+    $('status').classList.toggle('error', !!isError);
+  }
+
+  $('orderForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const who = { name: $('name').value.trim(), phone: $('phone').value.trim(), flat: $('flat').value.trim() };
+    if (!picker.count()) return say('Pick at least one item.', true);
+    if (!who.name) { $('name').focus(); return say('Please add your name.', true); }
+    if (who.phone.replace(/\D/g, '').length < 10) { $('phone').focus(); return say('Please add a 10-digit phone number.', true); }
+    if (!who.flat) { $('flat').focus(); return say('Please add your flat number.', true); }
+
+    const btn = $('placeBtn');
+    btn.disabled = true;
+    say('Placing your order…');
+    C.post(Object.assign({ action: 'placeOrder', menuId: current.id, qty: picker.qty(), notes: $('notes').value.trim() }, who)).then(d => {
+      C.store.set(DETAILS, who);
+      showDone(d.order);
+    }).catch(err => {
+      say(err.message, true);
+      // Someone else may have taken the last few: reload the counts so the steppers are right again.
+      if (err.code === 'limit' || err.code === 'closed' || err.code === 'gone') {
+        const id = current.id;
+        C.get('menus').then(d => {
+          menus = d.menus;
+          if (!menus.length) return show('none');
+          if (menus.some(m => m.id === id)) choose(id); else load();
+          say(err.message + ' We’ve updated what’s left. Please check your order again.', true);
+        }).catch(() => {});
+      }
+      btn.disabled = !picker.count();
+    });
+  });
+
+  function showDone(o) {
+    const m = current;
+    $('dId').textContent = '#' + o.id;
+    $('dWho').textContent = o.name + ', ' + o.flat;
+    $('dItems').innerHTML = picker.bill().rows.map(r => `<li><span>${r.qty} × ${C.esc(r.label)}</span><span class="num">${C.rupees(r.amount)}</span></li>`).join('')
+      + `<li class="total"><span>Total, pay by UPI at pickup</span><span class="num">${C.rupees(o.total)}</span></li>`;
+    $('dPickup').innerHTML = `Pick up on <strong>${C.esc(C.fmtDate(m.date))}</strong>, <strong>${C.esc(m.pickup || '')}</strong> from <strong>${C.esc(m.flat || '')}</strong>.`;
+    let digits = (m.phone || '').replace(/\D/g, '');
+    if (digits.length === 10) digits = '91' + digits;
+    $('dHelp').innerHTML = digits
+      ? `Need to change something? <a href="https://wa.me/${digits}?text=${encodeURIComponent('Hi! About my order #' + o.id + ' (' + o.name + ', ' + o.flat + '): ')}" target="_blank" rel="noopener">Message us on WhatsApp</a>.`
+      : '';
+    $('notes').value = '';
+    show('done');
+    window.scrollTo(0, 0);
+  }
+
+  $('again').addEventListener('click', () => { say(''); load(current && current.id); });
+
+  load();
+})();
+</script>
+</body>
+</html>

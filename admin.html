@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Crescent Kitchen Admin</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,700;0,9..144,800;1,9..144,500&family=DM+Sans:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="style.css">
+<style>
+/* Inner columns of cards. (.wrap centres itself with auto margins, which shrinks it when nested.) */
+.stack { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+#globalStatus:empty { display: none; }
+.top { display: flex; flex-direction: column; gap: 12px; }
+.top .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+nav.seg { align-self: flex-start; }
+.bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.bar select { width: auto; flex: 1 1 220px; }
+.bar button { flex: 0 0 auto; }
+
+.tiles { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.tile { background: var(--bg); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tile span { font-size: 13px; font-weight: 700; color: var(--muted); letter-spacing: 0.03em; text-transform: uppercase; overflow-wrap: anywhere; }
+.tile strong { font-family: var(--display); font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.tile small { font-size: 13px; color: var(--muted); }
+.tile.full strong { color: var(--accent); }
+
+.cook { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.menu-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: space-between; }
+
+.orders { display: flex; flex-direction: column; gap: 10px; }
+.order { border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px; background: var(--surface); }
+.order.is-done { background: var(--bg); }
+.order.is-off { opacity: 0.65; }
+.order .o-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.order .o-who { font-weight: 700; font-size: 17px; overflow-wrap: anywhere; }
+.order .o-total { font-family: var(--display); font-weight: 800; font-size: 22px; white-space: nowrap; }
+.order .o-meta { font-size: 14px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.order .o-notes { font-size: 15px; font-style: italic; }
+.order .actions > button { flex: 0 1 auto; }
+
+.menu-layout { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); }
+.menu-layout .forms { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+@media (min-width: 860px) {
+  .menu-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 420px); align-items: start; }
+  .menu-layout .side { position: sticky; top: 16px; }
+}
+.poster { width: 100%; height: auto; aspect-ratio: 1080 / 1350; border-radius: 10px; border: 1px solid var(--line); display: block; background: var(--bg); }
+.dish-row { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+body.dinner .dish-row { grid-template-columns: minmax(0, 1fr) 104px 96px; }
+body.dinner .dishgrid { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 420px) { body.dinner .dish-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } body.dinner .dish-row > label:first-child { grid-column: 1 / -1; } }
+body.dinner .lunch-f, body:not(.dinner) .dinner-f { display: none !important; }
+
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+th { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+tfoot td { font-weight: 700; border-bottom: 0; }
+.table-wrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="row">
+      <h1>Kitchen admin</h1>
+      <div class="bar"><span class="pill" id="mockPill" hidden>Test mode</span><button type="button" class="quiet" id="logout" hidden>Sign out</button></div>
+    </div>
+    <nav class="seg" id="tabs" aria-label="Sections" hidden>
+      <button type="button" data-tab="orders" aria-pressed="true">Orders</button>
+      <button type="button" data-tab="menu" aria-pressed="false">Menu &amp; poster</button>
+      <button type="button" data-tab="records" aria-pressed="false">Records</button>
+    </nav>
+  </header>
+
+  <div id="setup" class="banner" hidden>This page isn’t connected to your Google Sheet yet. Follow SETUP.md, then paste the web app URL into config.js.</div>
+
+  <!-- Sign in -->
+  <section class="card wrap narrow" id="login" hidden style="margin:0">
+    <h2>Sign in</h2>
+    <form id="loginForm" class="fields one">
+      <label for="pw">Admin password<input id="pw" type="password" autocomplete="current-password" required></label>
+      <div class="actions"><button type="submit" id="loginBtn">Sign in</button></div>
+    </form>
+    <p class="status" id="loginStatus" role="status"></p>
+  </section>
+
+  <p class="status" id="globalStatus" role="status" aria-live="polite"></p>
+
+  <!-- Orders -->
+  <section id="tab-orders" hidden>
+    <div class="stack">
+      <div class="bar">
+        <select id="menuPick" aria-label="Which meal"></select>
+        <button type="button" class="quiet" id="refresh">Refresh</button>
+      </div>
+
+      <p class="card muted" id="noMenus" hidden>No menus yet. Go to <strong>Menu &amp; poster</strong> to publish your first one.</p>
+
+      <div id="menuView" hidden class="stack">
+        <section class="card">
+          <div class="menu-title">
+            <h2 id="mvTitle"></h2>
+            <span class="bar"><span class="pill" id="mvState"></span><button type="button" class="secondary small" id="mvToggle"></button></span>
+          </div>
+          <div class="tiles" id="limitTiles"></div>
+          <div class="tiles" id="moneyTiles"></div>
+          <div>
+            <h3>To cook</h3>
+            <ul class="cook" id="cook"></ul>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="menu-title">
+            <h2>Orders</h2>
+            <button type="button" class="secondary small" id="addToggle">+ Add an order</button>
+          </div>
+
+          <form id="addForm" class="card" hidden style="background:var(--bg)">
+            <h3>Add an order from WhatsApp or in person</h3>
+            <p class="hint">Counts toward the limits like any other order. You can add one after the order-by time.</p>
+            <div id="addPicker"></div>
+            <div class="fields three">
+              <label for="aName">Name<input id="aName" maxlength="60" autocapitalize="words" required></label>
+              <label for="aPhone">Phone<input id="aPhone" type="tel" maxlength="20"></label>
+              <label for="aFlat">Flat<input id="aFlat" maxlength="30"></label>
+            </div>
+            <label for="aNotes">Notes<input id="aNotes" maxlength="200"></label>
+            <div class="actions"><button type="submit" id="addBtn">Add order · <span id="addTotal">₹0</span></button><button type="button" class="quiet" id="addCancel">Cancel</button></div>
+            <p class="status" id="addStatus" role="status"></p>
+          </form>
+
+          <div class="seg" id="filter" role="group" aria-label="Show orders">
+            <button type="button" data-f="todo" aria-pressed="true">To complete</button>
+            <button type="button" data-f="Completed" aria-pressed="false">Completed</button>
+            <button type="button" data-f="Cancelled" aria-pressed="false">Cancelled</button>
+            <button type="button" data-f="all" aria-pressed="false">All</button>
+          </div>
+          <div class="orders" id="orderList"></div>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <!-- Menu & poster -->
+  <section id="tab-menu" hidden>
+    <div class="menu-layout">
+      <div class="forms">
+        <section class="card">
+          <h2>Which meal</h2>
+          <div class="fields">
+            <label for="mDate">Date<input id="mDate" type="date" required></label>
+            <div style="display:flex;flex-direction:column;gap:6px"><span class="hint" style="font-weight:700;text-transform:uppercase;font-size:13px;letter-spacing:.04em">Meal</span>
+              <div class="seg" id="mMeal" role="group" aria-label="Meal">
+                <button type="button" data-meal="Lunch" aria-pressed="true">Lunch</button>
+                <button type="button" data-meal="Dinner" aria-pressed="false">Dinner</button>
+              </div>
+            </div>
+          </div>
+          <p class="hint" id="mExisting"></p>
+        </section>
+
+        <section class="card">
+          <h2>The menu</h2>
+          <div class="fields dishgrid">
+            <div class="dish-row"><label for="d1">Dish 1<input id="d1" placeholder="Type a dish" autocomplete="off" autocapitalize="words" maxlength="44"></label><label for="p1" class="dinner-f">Price<span class="prefix"><span>₹</span><input id="p1" inputmode="numeric" maxlength="5"></span></label><label for="lim1" class="dinner-f">Limit<input id="lim1" inputmode="numeric" maxlength="4" placeholder="None"></label></div>
+            <div class="dish-row"><label for="d2">Dish 2<input id="d2" placeholder="Type a dish" autocomplete="off" autocapitalize="words" maxlength="44"></label><label for="p2" class="dinner-f">Price<span class="prefix"><span>₹</span><input id="p2" inputmode="numeric" maxlength="5"></span></label><label for="lim2" class="dinner-f">Limit<input id="lim2" inputmode="numeric" maxlength="4" placeholder="None"></label></div>
+            <div class="dish-row"><label for="d3">Dish 3<input id="d3" placeholder="Type a dish" autocomplete="off" autocapitalize="words" maxlength="44"></label><label for="p3" class="dinner-f">Price<span class="prefix"><span>₹</span><input id="p3" inputmode="numeric" maxlength="5"></span></label><label for="lim3" class="dinner-f">Limit<input id="lim3" inputmode="numeric" maxlength="4" placeholder="None"></label></div>
+            <div class="dish-row"><label for="d4">Dish 4<input id="d4" placeholder="Type a dish" autocomplete="off" autocapitalize="words" maxlength="44"></label><label for="p4" class="dinner-f">Price<span class="prefix"><span>₹</span><input id="p4" inputmode="numeric" maxlength="5"></span></label><label for="lim4" class="dinner-f">Limit<input id="lim4" inputmode="numeric" maxlength="4" placeholder="None"></label></div>
+          </div>
+          <div class="fields three lunch-f">
+            <label for="r1">Choice 1<input id="r1" autocomplete="off" autocapitalize="words" maxlength="14"></label>
+            <label for="r2">Choice 2<input id="r2" autocomplete="off" autocapitalize="words" maxlength="14"></label>
+            <label for="side">Also included<input id="side" autocomplete="off" autocapitalize="words" maxlength="18"></label>
+          </div>
+          <p class="hint lunch-f">Choice 1 and 2 show as “Rice or Roti”. Choice 2 is the roti one. Leave it empty if there’s no choice that day.</p>
+          <p class="hint dinner-f">Each bowl has its own price and its own limit. Leave a limit empty for no limit, and leave a dish empty to drop it.</p>
+        </section>
+
+        <section class="card lunch-f">
+          <h2>Prices &amp; limits</h2>
+          <div class="fields three">
+            <label for="mealPrice">Meal<span class="prefix"><span>₹</span><input id="mealPrice" inputmode="numeric" maxlength="5"></span></label>
+            <label for="itemPrice">Single item<span class="prefix"><span>₹</span><input id="itemPrice" inputmode="numeric" maxlength="5"></span></label>
+            <label for="rotiPrice">One roti<span class="prefix"><span>₹</span><input id="rotiPrice" inputmode="numeric" maxlength="5"></span></label>
+          </div>
+          <div class="fields">
+            <label for="mealLimit">Most meals<input id="mealLimit" inputmode="numeric" maxlength="4" placeholder="No limit"></label>
+            <label for="itemLimit">Most single items<input id="itemLimit" inputmode="numeric" maxlength="4" placeholder="No limit"></label>
+            <label for="rotiLimit">Most rotis in total<input id="rotiLimit" inputmode="numeric" maxlength="4" placeholder="No limit"></label>
+            <label for="rotisPerMeal">Rotis in one roti meal<input id="rotisPerMeal" inputmode="numeric" maxlength="2" placeholder="e.g. 3"></label>
+          </div>
+          <p class="hint">The roti limit counts extra rotis plus the rotis inside every roti meal. Leave a limit empty for no limit.</p>
+        </section>
+
+        <section class="card">
+          <h2>Timings, contact &amp; look</h2>
+          <div class="fields">
+            <label for="orderBy">Order by<input id="orderBy" type="time"></label>
+            <label for="pickup">Pickup<input id="pickup" maxlength="22"></label>
+            <label for="phone">WhatsApp number<input id="phone" inputmode="tel" maxlength="18"></label>
+            <label for="flat">Pickup place<input id="flat" maxlength="26"></label>
+            <label for="scheme">Poster colours<select id="scheme"></select></label>
+          </div>
+          <p class="hint">The website stops taking orders at the order-by time on the menu’s date.</p>
+        </section>
+      </div>
+
+      <div class="side card">
+        <h2>Poster</h2>
+        <img id="poster" class="poster" alt="Poster preview showing the menu, prices and timings">
+        <div class="actions">
+          <button type="button" id="publish">Publish &amp; open orders</button>
+        </div>
+        <div class="actions">
+          <button type="button" class="secondary" id="saveImg">Save image</button>
+          <button type="button" class="secondary" id="shareImg" hidden>Share to WhatsApp</button>
+        </div>
+        <p class="status" id="menuStatus" role="status" aria-live="polite"></p>
+        <p class="hint">If saving doesn’t work on your phone, press and hold the poster and choose Save image.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Records -->
+  <section id="tab-records" hidden>
+    <div class="stack">
+      <div class="bar">
+        <label for="month" style="flex-direction:row;align-items:center;gap:10px">Month<input id="month" type="month" style="width:auto"></label>
+        <a id="sheetLink" target="_blank" rel="noopener">Open the Google Sheet</a>
+      </div>
+      <div class="tiles" id="recTiles"></div>
+      <section class="card">
+        <h2>By meal</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Date</th><th>Meal</th><th class="n">Orders</th><th class="n">Completed</th><th class="n">Total</th><th class="n">Collected</th></tr></thead>
+          <tbody id="recBody"></tbody>
+          <tfoot id="recFoot"></tfoot>
+        </table></div>
+        <p class="hint">Cancelled orders aren’t counted. “Collected” is the money from orders you marked completed.</p>
+      </section>
+    </div>
+  </section>
+</div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script src="poster.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>

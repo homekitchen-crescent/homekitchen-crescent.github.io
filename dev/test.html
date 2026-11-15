@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Backend tests</title></head>
+<body>
+<pre id="out">Running…</pre>
+<script>localStorage.removeItem('crescent-mock-sheet');</script>
+<script src="mock.js"></script>
+<script>
+// Checks the order rules in apps-script/Code.gs using the pretend sheet. Open dev/test.html from a local server.
+(async function () {
+  var api = await CrescentMock.ready, lines = [], fails = 0;
+  function ok(cond, label) { lines.push((cond ? 'PASS ' : 'FAIL ') + label); if (!cond) fails++; }
+  async function rejects(p, re, label) {
+    try { await p; ok(false, label + ' (no error)'); } catch (e) { ok(re.test(e.message), label + ' → ' + e.message); }
+  }
+  var pw = 'test';
+  function day(offset) {
+    var d = new Date(Date.now() + offset * 864e5);
+    return Utilities.formatDate(d, 'Asia/Kolkata', 'yyyy-MM-dd');
+  }
+  var T = day(1), Y = day(-1);
+  var lunch = { date: T, meal: 'Lunch', d1: 'Dal Tadka', d2: 'Aloo Gobi', d3: 'Jeera Rice', d4: 'Salad', r1: 'Rice', r2: 'Roti', side: 'Curd',
+    mealPrice: '200', itemPrice: '100', rotiPrice: '12', mealLimit: '5', itemLimit: '3', rotiLimit: '20', rotisPerMeal: '4', orderBy: '23:59', pickup: '1 PM' };
+  var dinner = { date: T, meal: 'Dinner', d1: 'Rajma Chawal', d2: 'Veg Pulao', d3: '', d4: '', p1: '160', p2: '175', lim1: '2', lim2: '', orderBy: '23:59', pickup: '8 PM' };
+  var who = { name: 'Asha', phone: '98765 43210', flat: 'D-1203' };
+
+  await rejects(api.post({ action: 'adminData', password: 'nope' }), /password/, 'wrong admin password refused');
+  await rejects(api.post({ action: 'saveMenu', password: pw, menu: Object.assign({}, lunch, { rotisPerMeal: '' }) }), /how many rotis/, 'roti limit needs rotis-per-meal');
+  var L = (await api.post({ action: 'saveMenu', password: pw, menu: lunch })).menu;
+  var D = (await api.post({ action: 'saveMenu', password: pw, menu: dinner })).menu;
+  ok(L.id === T + '-lunch' && L.open, 'lunch menu saved and open');
+
+  var pub = (await api.get('menus')).menus;
+  ok(pub.length === 2 && pub[0].meal === 'Lunch', 'both menus public, lunch first');
+  ok(pub[0].mealLimit === undefined && pub[0].left.meals === 5, 'public menu hides limits, shows what is left');
+
+  var o1 = (await api.post(Object.assign({ action: 'placeOrder', menuId: L.id, qty: { m1: 1, m2: 2, i1: 1, x: 3 } }, who))).order;
+  ok(o1.id === 1 && o1.total === 3 * 200 + 100 + 3 * 12, 'lunch total = 3 meals + 1 single + 3 rotis (₹' + o1.total + ')');
+  ok(/1 × Meal with Rice, 2 × Meal with Roti, 1 × Dal Tadka \(single\), 3 × Roti \(extra\)/.test(o1.items), 'readable items: ' + o1.items);
+
+  var left = (await api.get('menus')).menus[0].left;
+  ok(left.meals === 2 && left.items === 2 && left.rotis === 20 - (2 * 4 + 3), 'left after order: meals 2, items 2, rotis ' + left.rotis);
+
+  await rejects(api.post(Object.assign({ action: 'placeOrder', menuId: L.id, qty: { m1: 3 } }, who)), /only 2 meals left/, 'meal limit enforced');
+  await rejects(api.post(Object.assign({ action: 'placeOrder', menuId: L.id, qty: { m2: 1, x: 6 } }, who)), /only 9 rotis left/, 'roti meals count against roti limit');
+  await rejects(api.post(Object.assign({ action: 'placeOrder', menuId: L.id, qty: { i2: 3 } }, who)), /only 2 single items/, 'single item limit enforced');
+  await rejects(api.post(Object.assign({ action: 'placeOrder', menuId: L.id, qty: {} }, who)), /at least one/, 'empty order refused');
+  await rejects(api.post({ action: 'placeOrder', menuId: L.id, qty: { m1: 1 }, name: 'A', phone: '123', flat: 'x' }), /10-digit/, 'phone checked');
+
+  var b1 = (await api.post(Object.assign({ action: 'placeOrder', menuId: D.id, qty: { b1: 2, b2: 5 } }, who))).order;
+  ok(b1.total === 2 * 160 + 5 * 175, 'dinner bowls priced separately (₹' + b1.total + ')');
+  await rejects(api.post(Object.assign({ action: 'placeOrder', menuId: D.id, qty: { b1: 1 } }, who)), /Rajma Chawal is sold out/, 'per-bowl limit enforced');
+  var b2 = (await api.post(Object.assign({ action: 'placeOrder', menuId: D.id, qty: { b2: 9 } }, who))).order;
+  ok(b2.id === 3, 'bowl with no limit keeps taking orders');
+
+  // Cancelling frees up the bowls; bringing it back has to fit again.
+  await api.post({ action: 'setOrderStatus', password: pw, id: b1.id, status: 'Cancelled' });
+  ok((await api.get('menus')).menus[1].left.bowls[0] === 2, 'cancelled order frees its bowls');
+  await api.post(Object.assign({ action: 'addOrder', password: pw, menuId: D.id, qty: { b1: 1 } }, { name: 'WhatsApp aunty' }));
+  await rejects(api.post({ action: 'setOrderStatus', password: pw, id: b1.id, status: 'Pending' }), /only 1 Rajma Chawal/, 'un-cancelling re-checks limits');
+
+  var done = (await api.post({ action: 'setOrderStatus', password: pw, id: o1.id, status: 'Completed' })).order;
+  ok(done.status === 'Completed' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(done.completedAt), 'mark completed records time');
+  var data = await api.post({ action: 'adminData', password: pw });
+  var LS = data.menus.filter(function (m) { return m.id === L.id; })[0].stats;
+  ok(LS.collected === o1.total && LS.total === o1.total, 'collections counted from completed orders');
+  ok(data.orders.length === 4 && data.orders[0].source === 'Added by me', 'admin sees every order, newest first');
+
+  // Order-by time passed: customers are refused, you can still add orders yourself.
+  var old = (await api.post({ action: 'saveMenu', password: pw, menu: Object.assign({}, dinner, { date: Y }) })).menu;
+  ok(!old.open && (await api.get('menus')).menus.length === 2, 'past menu is closed and hidden');
+  await rejects(api.post(Object.assign({ action: 'placeOrder', menuId: old.id, qty: { b2: 1 } }, who)), /closed/, 'customer refused after order-by');
+  ok((await api.post(Object.assign({ action: 'addOrder', password: pw, menuId: old.id, qty: { b2: 1 } }, { name: 'Late' }))).order.id === 5, 'admin can still add after order-by');
+
+  await api.post({ action: 'setMenuStatus', password: pw, id: L.id, status: 'Closed' });
+  ok((await api.get('menus')).menus.length === 1, 'closing a menu stops orders');
+
+  var weird = (await api.post({ action: 'placeOrder', menuId: D.id, qty: { b2: 1 }, name: '=HYPERLINK("x")', phone: '+91 98765 43210', flat: '0042' })).order;
+  var back = (await api.post({ action: 'adminData', password: pw })).orders[0];
+  ok(back.name === '=HYPERLINK("x")' && back.phone === '+91 98765 43210' && back.flat === '0042', 'text stored as typed (no formulas, keeps leading zeros)');
+
+  lines.unshift(fails ? fails + ' FAILED' : 'ALL PASSED');
+  document.getElementById('out').textContent = lines.join('\n');
+  document.title = fails ? 'FAIL' : 'PASS';
+})().catch(function (e) { document.getElementById('out').textContent = 'CRASH ' + e.stack; document.title = 'CRASH'; });
+</script>
+</body></html>

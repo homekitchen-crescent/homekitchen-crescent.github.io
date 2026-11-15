@@ -1,0 +1,518 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body><title>Crescent Menu Maker</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,700;0,9..144,800;1,9..144,500&family=DM+Sans:wght@400;500;700&display=swap">
+<style>
+/* Layout: phone-first single column (dishes → preview → details); two columns on wide screens with the poster on the right. */
+:root {
+  --bg: #FFF7E3;
+  --surface: #FFFFFF;
+  --ink: #3A2410;
+  --muted: #6B4E2E;
+  --line: #E8D3A6;
+  --accent: #B4441B;
+  --accent-ink: #FFF7E3;
+  --focus: #1F5FBF;
+  --display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --body: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1F1710; --surface: #2B2017; --ink: #F6EBD8; --muted: #CDB89A; --line: #4A3826;
+    --accent: #F0A36E; --accent-ink: #2A1408; --focus: #8DB8FF; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1F1710; --surface: #2B2017; --ink: #F6EBD8; --muted: #CDB89A; --line: #4A3826;
+  --accent: #F0A36E; --accent-ink: #2A1408; --focus: #8DB8FF; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.wrap { max-width: 1040px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+header { display: flex; flex-direction: column; gap: 4px; }
+h1 { font-family: var(--display); font-weight: 800; font-size: clamp(28px, 6vw, 40px); line-height: 1.05; margin: 0; text-wrap: balance; }
+header p { margin: 0; color: var(--muted); }
+.layout { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "dishes" "preview" "more"; }
+@media (min-width: 820px) {
+  .layout { grid-template-columns: minmax(0, 1fr) minmax(0, 440px); grid-template-areas: "dishes preview" "more preview"; align-items: start; }
+  .preview { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); }
+}
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.dishes { grid-area: dishes; }
+.preview { grid-area: preview; }
+.more { grid-area: more; }
+h2 { font-family: var(--display); font-weight: 700; font-size: 22px; margin: 0; }
+.fields { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.fields.one { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 420px) { .fields { grid-template-columns: minmax(0, 1fr); } }
+/* Dinner: each dish gets its own price box beside it; fields for the other meal are hidden. */
+.dish-row { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); min-width: 0; }
+body.dinner .dishgrid { grid-template-columns: minmax(0, 1fr); }
+body.dinner .dish-row { grid-template-columns: minmax(0, 1fr) 128px; }
+body.dinner .lunch-f, body:not(.dinner) .dinner-f { display: none; }
+label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); min-width: 0; }
+input, select {
+  font: 500 17px/1.3 var(--body); color: var(--ink); background: var(--bg);
+  border: 1.5px solid var(--line); border-radius: 10px; padding: 11px 12px; min-height: 46px; width: 100%; text-transform: none; letter-spacing: 0;
+}
+input:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.prefix { display: flex; align-items: center; gap: 6px; }
+.prefix span { font: 700 17px var(--body); color: var(--ink); }
+details { display: flex; flex-direction: column; }
+summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 44px; }
+summary::-webkit-details-marker { display: none; }
+summary .chev { font: 700 14px var(--body); color: var(--accent); }
+details[open] summary .chev::after { content: "Hide"; }
+details:not([open]) summary .chev::after { content: "Show"; }
+.group { display: flex; flex-direction: column; gap: 12px; padding-top: 14px; border-top: 1px solid var(--line); margin-top: 6px; }
+.group h3 { margin: 0; font-size: 15px; font-weight: 700; }
+.poster { width: 100%; height: auto; aspect-ratio: 1080 / 1350; border-radius: 10px; border: 1px solid var(--line); display: block; background: var(--bg); max-width: 100%; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+button {
+  font: 700 17px var(--body); border-radius: 999px; padding: 12px 22px; min-height: 48px; cursor: pointer;
+  border: 2px solid var(--accent); background: var(--accent); color: var(--accent-ink); flex: 1 1 160px;
+}
+button.secondary { background: transparent; color: var(--accent); }
+button.quiet { background: transparent; color: var(--muted); border-color: var(--line); flex: 0 0 auto; font-size: 15px; min-height: 44px; }
+button:disabled { opacity: 0.6; cursor: progress; }
+.status { min-height: 1.4em; margin: 0; font-size: 15px; color: var(--muted); }
+.hint { margin: 0; font-size: 14px; color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) { button { transition: transform 0.08s ease; } button:active { transform: scale(0.98); } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Crescent Menu Maker</h1>
+    <p>Type the dishes, check the poster, then save the picture and post it in the group.</p>
+  </header>
+
+  <div class="layout">
+    <section class="card dishes" aria-labelledby="dishes-h">
+      <h2 id="dishes-h">The menu</h2>
+      <div class="fields one">
+        <label for="heading">Poster heading
+          <select id="heading">
+            <option>Today’s Lunch</option>
+            <option>Today’s Dinner</option>
+            <option>Tomorrow’s Lunch</option>
+            <option>Tomorrow’s Dinner</option>
+          </select>
+        </label>
+      </div>
+      <div class="fields dishgrid">
+        <div class="dish-row"><label for="d1">Dish 1<input id="d1" placeholder="Type a dish" autocomplete="off" autocapitalize="words" maxlength="22"></label><label for="p1" class="dinner-f">Price<span class="prefix"><span>₹</span><input id="p1" inputmode="numeric" maxlength="5"></span></label></div>
+        <div class="dish-row"><label for="d2">Dish 2<input id="d2" placeholder="Type a dish" autocomplete="off" autocapitalize="words" maxlength="22"></label><label for="p2" class="dinner-f">Price<span class="prefix"><span>₹</span><input id="p2" inputmode="numeric" maxlength="5"></span></label></div>
+        <div class="dish-row"><label for="d3">Dish 3<input id="d3" placeholder="Type a dish" autocomplete="off" autocapitalize="words" maxlength="22"></label><label for="p3" class="dinner-f">Price<span class="prefix"><span>₹</span><input id="p3" inputmode="numeric" maxlength="5"></span></label></div>
+        <div class="dish-row"><label for="d4">Dish 4<input id="d4" placeholder="Type a dish" autocomplete="off" autocapitalize="words" maxlength="22"></label><label for="p4" class="dinner-f">Price<span class="prefix"><span>₹</span><input id="p4" inputmode="numeric" maxlength="5"></span></label></div>
+      </div>
+      <div class="fields" id="lunchOnly">
+        <label for="r1">Choice 1<input id="r1" autocomplete="off" autocapitalize="words" maxlength="14"></label>
+        <label for="r2">Choice 2<input id="r2" autocomplete="off" autocapitalize="words" maxlength="14"></label>
+        <label for="side">Also included<input id="side" autocomplete="off" autocapitalize="words" maxlength="18"></label>
+      </div>
+      <p class="hint" id="dinnerHint" hidden>Dinner posters list each bowl with its own price. Leave a dish empty to leave it off the poster.</p>
+      <p class="hint" id="lunchHint">Choice 1 and 2 show as “Rice or Roti”. Leave Choice 2 empty if there’s no choice that day.</p>
+    </section>
+
+    <section class="card preview" aria-labelledby="preview-h">
+      <h2 id="preview-h">Poster</h2>
+      <img id="poster" class="poster" alt="Poster preview showing the menu, prices and timings">
+      <div class="actions">
+        <button type="button" id="save">Save image</button>
+        <button type="button" id="share" class="secondary" hidden>Share to WhatsApp</button>
+      </div>
+      <p class="status" id="status" role="status" aria-live="polite"></p>
+      <p class="hint">If saving doesn’t work on your phone, press and hold the poster and choose Save image.</p>
+    </section>
+
+    <section class="card more">
+      <details id="more">
+        <summary><h2>Prices, timings &amp; colours</h2><span class="chev"></span></summary>
+        <div class="group lunch-f">
+          <h3>Lunch prices (₹)</h3>
+          <div class="fields">
+            <label for="meal">Lunch meal<span class="prefix"><span>₹</span><input id="meal" inputmode="numeric" maxlength="5"></span></label>
+            <label for="item">Lunch: single item<span class="prefix"><span>₹</span><input id="item" inputmode="numeric" maxlength="5"></span></label>
+            <label for="roti">Lunch: one roti<span class="prefix"><span>₹</span><input id="roti" inputmode="numeric" maxlength="5"></span></label>
+          </div>
+        </div>
+        <div class="group">
+          <h3>Timings</h3>
+          <div class="fields">
+            <label for="lOrder" class="lunch-f">Lunch: order by<input id="lOrder" maxlength="14"></label>
+            <label for="lPick" class="lunch-f">Lunch: pickup<input id="lPick" maxlength="22"></label>
+            <label for="dOrder" class="dinner-f">Dinner: order by<input id="dOrder" maxlength="14"></label>
+            <label for="dPick" class="dinner-f">Dinner: pickup<input id="dPick" maxlength="22"></label>
+          </div>
+        </div>
+        <div class="group">
+          <h3>Contact &amp; look</h3>
+          <div class="fields">
+            <label for="phone">WhatsApp number<input id="phone" inputmode="tel" maxlength="18"></label>
+            <label for="flat">Pickup place<input id="flat" maxlength="26"></label>
+            <label for="lScheme" class="lunch-f">Lunch colours
+              <select id="lScheme">
+                <option>Tomato Red</option>
+                <option>Indigo Night</option>
+                <option>Sunny Turmeric</option>
+                <option>Leaf Green</option>
+              </select>
+            </label>
+            <label for="dScheme" class="dinner-f">Dinner colours
+              <select id="dScheme">
+                <option>Indigo Night</option>
+                <option>Tomato Red</option>
+                <option>Sunny Turmeric</option>
+                <option>Leaf Green</option>
+              </select>
+            </label>
+          </div>
+          <div class="actions"><button type="button" id="reset" class="quiet">Reset everything to the original</button></div>
+        </div>
+      </details>
+    </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  var DEFAULTS = {
+    heading: 'Tomorrow’s Lunch', d1: '', d2: '', d3: '', d4: '',
+    r1: 'Rice', r2: 'Roti', side: 'Curd',
+    meal: '200', item: '100', roti: '12', p1: '175', p2: '175', p3: '175', p4: '175',
+    lOrder: '11 AM', lPick: '1:00 PM – 1:30 PM', dOrder: '5 PM', dPick: '7:30 PM – 8:00 PM',
+    phone: '+91 76719 04862', flat: 'Flat 4094 (D-Tower)', lScheme: 'Tomato Red', dScheme: 'Indigo Night'
+  };
+  var KEYS = Object.keys(DEFAULTS);
+  var STORE = 'crescent-menu-maker-v2', OLD_STORE = 'crescent-menu-maker-v1';
+  var DISHES = ['d1', 'd2', 'd3', 'd4'];
+  function today() { var d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+  var SCHEMES = {
+    'Sunny Turmeric': { bg:'#FFF4D6', text:'#3A2410', muted:'#6B4E2E', accent:'#B4441B', pillBg:'#3A2410', pillText:'#FFF4D6', cardBg:'#FFFFFF', cardText:'#3A2410', label:'#8A4A1A', sub:'#6B4E2E', divider:'#EBD9AE', border:'#E2C98A', moon:'#F2C77A' },
+    'Leaf Green': { bg:'#1E3A2A', text:'#FBF6EA', muted:'#E4DCC8', accent:'#F2B632', pillBg:'#FBF6EA', pillText:'#1E3A2A', cardBg:'#FBF6EA', cardText:'#1E3A2A', label:'#6B5A2E', sub:'#4A4030', divider:'#D8CDB2', border:'#4F6E5B', moon:'#E4DCC8' },
+    'Indigo Night': { bg:'#1C1F3B', text:'#F6F1E7', muted:'#D6D2E6', accent:'#F5B942', pillBg:'#F6F1E7', pillText:'#1C1F3B', cardBg:'#F6F1E7', cardText:'#1C1F3B', label:'#5A4A80', sub:'#45405E', divider:'#D9D3E6', border:'#474C7A', moon:'#D6D2E6' },
+    'Tomato Red': { bg:'#A3321F', text:'#FFF5EA', muted:'#F6DCCB', accent:'#FFD166', pillBg:'#FFF5EA', pillText:'#A3321F', cardBg:'#FFF5EA', cardText:'#5A1A10', label:'#A3321F', sub:'#6B3A2E', divider:'#EED6C4', border:'#C9604C', moon:'#F6DCCB' }
+  };
+  var FR = "Fraunces, Georgia, 'Times New Roman', serif";
+  var DM = "'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+  var W = 1080, H = 1350;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  var ctx = canvas.getContext('2d');
+  var img = $('poster'), statusEl = $('status');
+
+  function load() {
+    var s = {}, fresh = false;
+    try {
+      var raw = localStorage.getItem(STORE);
+      if (raw) s = JSON.parse(raw) || {};
+      else { s = JSON.parse(localStorage.getItem(OLD_STORE) || '{}') || {}; fresh = true; }
+    } catch (e) { s = {}; }
+    // Dishes start empty each new day; prices, timings and contact stay saved.
+    if (fresh || s.day !== today()) DISHES.forEach(function (k) { delete s[k]; });
+    var out = {};
+    KEYS.forEach(function (k) { out[k] = (typeof s[k] === 'string') ? s[k] : DEFAULTS[k]; });
+    if (!SCHEMES[out.lScheme]) out.lScheme = DEFAULTS.lScheme;
+    if (!SCHEMES[out.dScheme]) out.dScheme = DEFAULTS.dScheme;
+    if (['Today’s Lunch', 'Today’s Dinner', 'Tomorrow’s Lunch', 'Tomorrow’s Dinner'].indexOf(out.heading) < 0) out.heading = DEFAULTS.heading;
+    if (out.flat === 'Flat 4094') out.flat = DEFAULTS.flat;
+    // Older saves had one dinner price for every bowl; carry it over to each bowl.
+    if (typeof s.dMeal === 'string' && s.dMeal && s.dMeal !== '150' && s.dMeal !== '170')
+      ['p1', 'p2', 'p3', 'p4'].forEach(function (k) { if (typeof s[k] !== 'string') out[k] = s.dMeal; });
+    if (out.lPick === '1 – 1:30 PM') out.lPick = DEFAULTS.lPick;
+    if (out.dPick === '7:30 – 8 PM') out.dPick = DEFAULTS.dPick;
+    return out;
+  }
+  function persist(state) { try { localStorage.setItem(STORE, JSON.stringify(Object.assign({ day: today() }, state))); } catch (e) {} }
+  function readForm() {
+    var s = {};
+    KEYS.forEach(function (k) { s[k] = $(k).value.trim(); });
+    return s;
+  }
+  function fillForm(s) { KEYS.forEach(function (k) { $(k).value = s[k]; }); }
+
+  function font(weight, size, family, italic) { return (italic ? 'italic ' : '') + weight + ' ' + size + 'px ' + family; }
+  function setLS(px) { if ('letterSpacing' in ctx) ctx.letterSpacing = px + 'px'; }
+  function fit(text, weight, size, family, maxW, italic, min) {
+    var sz = size; min = min || 18;
+    ctx.font = font(weight, sz, family, italic);
+    while (sz > min && ctx.measureText(text).width > maxW) { sz -= 2; ctx.font = font(weight, sz, family, italic); }
+    return sz;
+  }
+  function text(str, x, y, o) {
+    ctx.save();
+    ctx.fillStyle = o.color; ctx.textAlign = o.align || 'left'; ctx.textBaseline = 'middle';
+    setLS(o.ls || 0);
+    var size = o.maxW ? fit(str, o.weight, o.size, o.family, o.maxW, o.italic, o.min) : o.size;
+    ctx.font = font(o.weight, size, o.family, o.italic);
+    ctx.fillText(str, x, y);
+    ctx.restore();
+  }
+  function rr(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+  function rupee(v) { v = (v || '').replace(/^₹\s*/, ''); return v ? '₹' + v : '₹'; }
+
+  // City skyline doodle: solid buildings in front of a soft moon, 100 x 60 before scaling.
+  function drawSkyline(c, x, y, s) {
+    ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+    ctx.fillStyle = c.moon; ctx.beginPath(); ctx.arc(70, 20, 16, 0, Math.PI * 2); ctx.fill();
+    var pts = [[0,60],[0,34],[12,34],[12,22],[26,22],[26,10],[30,10],[30,4],[32,4],[32,10],[40,10],[40,28],[50,28],[50,16],[64,16],[64,36],[74,36],[74,26],[88,26],[88,40],[100,40],[100,60]];
+    ctx.fillStyle = c.accent; ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+    for (var i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = c.bg;
+    [[4,40],[4,50],[16,28],[16,38],[30,16],[30,26],[30,36],[30,46],[54,22],[54,32],[54,42],[78,32],[78,42],[92,46]].forEach(function (p) { ctx.fillRect(p[0], p[1], 4, 4); });
+    ctx.restore();
+  }
+
+  function draw(st) {
+    var c = SCHEMES[/Dinner/.test(st.heading || '') ? st.dScheme : st.lScheme] || SCHEMES[DEFAULTS.lScheme];
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = c.bg; ctx.fillRect(0, 0, W, H);
+
+    // Header: crescent, name, tags
+    drawSkyline(c, 72, 60, 0.9);
+    text('Crescent Home Kitchen', 182, 90, { weight: 700, size: 38, family: FR, color: c.text });
+    ctx.font = font(700, 24, DM); setLS(0);
+    var w2 = ctx.measureText('No Garlic').width + 44, x2 = 1008 - w2;
+    var w1 = ctx.measureText('Pure Veg').width + 44, x1 = x2 - 12 - w1;
+    rr(x1, 67, w1, 46, 23); ctx.fillStyle = c.pillBg; ctx.fill();
+    text('Pure Veg', x1 + w1 / 2, 90, { weight: 700, size: 24, family: DM, color: c.pillText, align: 'center' });
+    rr(x2 + 1.5, 68.5, w2 - 3, 43, 21.5); ctx.strokeStyle = c.text; ctx.lineWidth = 3; ctx.stroke();
+    text('No Garlic', x2 + w2 / 2, 90, { weight: 700, size: 24, family: DM, color: c.text, align: 'center' });
+
+    // Headline
+    text(st.heading || DEFAULTS.heading, 72, 196, { weight: 800, size: 96, family: FR, color: c.accent, maxW: 936, min: 48 });
+
+    // Menu card
+    var isDinner = /Dinner/.test(st.heading || '');
+    var cy = 268, ch = isDinner ? 554 : 428;
+    rr(72, cy, 936, ch, 28); ctx.fillStyle = c.cardBg; ctx.fill();
+    text(isDinner ? 'DINNER BOWL OPTIONS' : 'COMPLETE MEAL INCLUDES', 116, cy + 64, { weight: 700, size: 22, family: DM, color: c.label, ls: 3 });
+    var avail;
+    if (isDinner) {
+      // Dinner: a borderless price list. Each bowl's name on the left, its own price on the right, soft dots between.
+      var bowls = [1, 2, 3, 4].map(function (i) { return { name: st['d' + i], price: st['p' + i] }; })
+        .filter(function (b) { return b.name; });
+      if (!bowls.length) bowls = [1, 2, 3, 4].map(function () { return { name: '—', price: '' }; });
+      var dishes = bowls.map(function (b) { return b.name; });
+      var prices = bowls.map(function (b) { return b.price ? rupee(b.price) : '—'; });
+      var pRight = 964, psz = 52, pw;
+      text('PRICE', pRight, cy + 64, { weight: 700, size: 22, family: DM, color: c.label, ls: 3, align: 'right' });
+      for (;;) {
+        ctx.font = font(800, psz, FR); setLS(0);
+        pw = Math.max.apply(null, prices.map(function (p) { return ctx.measureText(p).width; }));
+        if (pw <= 190 || psz <= 32) break;
+        psz -= 2;
+      }
+      avail = pRight - pw - 56 - 116;
+      // Long names wrap onto two lines; all bowls share one size.
+      function wrap2(str) {
+        if (ctx.measureText(str).width <= avail) return [str];
+        var words = str.split(' '), line = '', i = 0;
+        while (i < words.length) {
+          var t = line ? line + ' ' + words[i] : words[i];
+          if (ctx.measureText(t).width > avail && line) break;
+          line = t; i++;
+        }
+        return [line, words.slice(i).join(' ')];
+      }
+      var dsz = 36, lines;
+      for (;;) {
+        ctx.font = font(700, dsz, DM); setLS(0);
+        lines = dishes.map(wrap2);
+        var ok = lines.every(function (ls) { return ls.every(function (l) { return ctx.measureText(l).width <= avail; }); });
+        if (ok || dsz <= 22) break;
+        dsz -= 1;
+      }
+      // Rows are 110 apart and centred in the card, so fewer bowls still sit balanced.
+      var step = 110, top = cy + 95 + (440 - bowls.length * step) / 2;
+      bowls.forEach(function (b, i) {
+        var y = top + step / 2 + i * step, ls = lines[i], half = dsz * 0.62;
+        var lastY = ls.length === 1 ? y : y + half;
+        if (ls.length === 1) text(ls[0], 116, y, { weight: 700, size: dsz, family: DM, color: c.cardText, maxW: avail, min: 18 });
+        else {
+          text(ls[0], 116, y - half, { weight: 700, size: dsz, family: DM, color: c.cardText, maxW: avail, min: 18 });
+          text(ls[1], 116, y + half, { weight: 700, size: dsz, family: DM, color: c.cardText, maxW: avail, min: 18 });
+        }
+        ctx.font = font(700, dsz, DM); setLS(0);
+        var dotsFrom = 116 + ctx.measureText(ls[ls.length - 1]).width + 18;
+        ctx.font = font(800, psz, FR);
+        var dotsTo = pRight - ctx.measureText(prices[i]).width - 18;
+        ctx.save(); ctx.fillStyle = c.label; ctx.globalAlpha = 0.4;
+        for (var x = dotsFrom; x <= dotsTo; x += 14) { ctx.beginPath(); ctx.arc(x, lastY + dsz * 0.3, 2.2, 0, Math.PI * 2); ctx.fill(); }
+        ctx.restore();
+        // Nudge the larger price up so its baseline lines up with the dish name.
+        text(prices[i], pRight, lastY - (psz - dsz) * 0.36, { weight: 800, size: psz, family: FR, color: c.cardText, align: 'right' });
+      });
+    } else {
+    avail = 692 - 116;
+    var left = [st.d1, st.d2, st.d3].map(function (d) { return d || '—'; });
+    var d4 = st.d4 || '—';
+    var r1 = st.r1 || '', r2 = st.r2 || '', side = st.side || '—';
+    if (!r1 && r2) { r1 = r2; r2 = ''; }
+    if (!r1) r1 = '—';
+    var combo = r2 ? r1 + ' or ' + r2 : r1;
+    var size = 36, gap = 48, wl, wr;
+    for (;;) {
+      ctx.font = font(700, size, DM); setLS(0);
+      wl = Math.max.apply(null, left.map(function (d) { return ctx.measureText(d).width; }));
+      wr = Math.max(ctx.measureText(d4).width, ctx.measureText(combo).width, ctx.measureText(side).width);
+      if (wl + gap + wr <= avail || size <= 24) break;
+      size -= 2;
+    }
+    var colR = 116 + wl + gap;
+    var rows = [cy + 138, cy + 204, cy + 270];
+    left.forEach(function (d, i) { text(d, 116, rows[i], { weight: 700, size: size, family: DM, color: c.cardText }); });
+    text(d4, colR, rows[0], { weight: 700, size: size, family: DM, color: c.cardText });
+    ctx.font = font(700, size, DM); setLS(0);
+    if (r2) {
+      var wA = ctx.measureText(r1 + ' ').width, wOr = ctx.measureText('or').width;
+      text(r1 + ' ', colR, rows[1], { weight: 700, size: size, family: DM, color: c.cardText });
+      text('or', colR + wA, rows[1], { weight: 700, size: size, family: DM, color: c.label });
+      text(' ' + r2, colR + wA + wOr, rows[1], { weight: 700, size: size, family: DM, color: c.cardText });
+    } else {
+      text(r1, colR, rows[1], { weight: 700, size: size, family: DM, color: c.cardText });
+    }
+    text(side, colR, rows[2], { weight: 700, size: size, family: DM, color: c.cardText });
+    if (r2) text('Choose either ' + r1.toLowerCase() + ' or ' + r2.toLowerCase() + ' with your meal', 116, cy + 358, { weight: 500, size: 26, family: FR, italic: true, color: c.sub, maxW: avail });
+    ctx.fillStyle = c.divider; ctx.fillRect(728, cy + 40, 2, ch - 80);
+    text(rupee(st.meal), 847, cy + ch / 2 - 10, { weight: 800, size: 92, family: FR, color: c.cardText, align: 'center', maxW: 220, min: 48 });
+    text('single serving', 847, cy + ch / 2 + 60, { weight: 500, size: 24, family: DM, color: c.sub, align: 'center' });
+    }
+
+    // Single items
+    var ey = 724, eh = 98;
+    // Single item and roti prices are lunch only.
+    if (!isDinner) [[72, 'Any single item', 'serves 2', st.item], [550, st.r2 || 'Roti', 'per piece', st.roti]].forEach(function (b) {
+      rr(b[0] + 1, ey + 1, 456, eh - 2, 22); ctx.strokeStyle = c.border; ctx.lineWidth = 2; ctx.stroke();
+      text(b[1], b[0] + 28, ey + 35, { weight: 700, size: 28, family: DM, color: c.text });
+      text(b[2], b[0] + 28, ey + 68, { weight: 400, size: 22, family: DM, color: c.muted });
+      text(rupee(b[3]), b[0] + 458 - 28, ey + eh / 2, { weight: 800, size: 52, family: FR, color: c.accent, align: 'right', maxW: 170, min: 30 });
+    });
+
+    // Timings card
+    var ty = 850, th = 330;
+    rr(73, ty + 1, 934, th - 2, 28); ctx.strokeStyle = c.border; ctx.lineWidth = 2; ctx.stroke();
+    // Only this meal's order-by and pickup times, in the same two columns as the contact row below.
+    var cA = 108, cD = 552, rEnd = 972;
+    text('ORDER BY', cA, ty + 52, { weight: 700, size: 22, family: DM, color: c.accent, ls: 3 });
+    text('PICKUP', cD, ty + 52, { weight: 700, size: 22, family: DM, color: c.accent, ls: 3 });
+    text((isDinner ? st.dOrder : st.lOrder) || '—', cA, ty + 108, { weight: 700, size: 52, family: DM, color: c.text, maxW: cD - cA - 32, min: 28 });
+    text((isDinner ? st.dPick : st.lPick) || '—', cD, ty + 108, { weight: 700, size: 52, family: DM, color: c.text, maxW: rEnd - cD, min: 28 });
+    ctx.fillStyle = c.border; ctx.fillRect(cA, ty + 166, rEnd - cA, 2);
+    text('Order on WhatsApp', cA, ty + 212, { weight: 400, size: 24, family: DM, color: c.muted });
+    text('Collect from', cD, ty + 212, { weight: 400, size: 24, family: DM, color: c.muted });
+    text(st.phone || '—', cA, ty + 266, { weight: 700, size: 44, family: FR, color: c.text, maxW: 420, min: 26 });
+    text(st.flat || '—', cD, ty + 266, { weight: 700, size: 44, family: FR, color: c.text, maxW: 420, min: 26 });
+
+    // Footer
+    text('Simple, wholesome food — just like home.', 540, 1244, { weight: 500, size: 32, family: FR, italic: true, color: c.accent, align: 'center', maxW: 936 });
+    text('Thank you for your support!', 540, 1284, { weight: 400, size: 24, family: DM, color: c.muted, align: 'center' });
+
+    img.src = canvas.toDataURL('image/png');
+  }
+
+  var state = load();
+  fillForm(state);
+  function syncMode() {
+    var dinner = /Dinner/.test($('heading').value);
+    document.body.classList.toggle('dinner', dinner);
+    $('lunchOnly').hidden = dinner; $('lunchHint').hidden = dinner; $('dinnerHint').hidden = !dinner;
+    ['d1', 'd2', 'd3', 'd4'].forEach(function (k) { $(k).maxLength = dinner ? 44 : 22; });
+  }
+  syncMode();
+  $('heading').addEventListener('change', syncMode);
+  var timer = null;
+  function update() {
+    state = readForm();
+    persist(state);
+    clearTimeout(timer);
+    timer = setTimeout(function () { draw(state); }, 120);
+  }
+  KEYS.forEach(function (k) { $(k).addEventListener('input', update); $(k).addEventListener('change', update); });
+
+  $('reset').addEventListener('click', function () {
+    state = Object.assign({}, DEFAULTS); fillForm(state); syncMode(); persist(state); draw(state);
+    statusEl.textContent = 'Everything is back to the original poster.';
+  });
+
+  draw(state);
+  var fontSpecs = ['800 96px Fraunces', '700 40px Fraunces', 'italic 500 26px Fraunces', '400 24px "DM Sans"', '500 24px "DM Sans"', '700 24px "DM Sans"'];
+  if (document.fonts && document.fonts.load) {
+    Promise.all(fontSpecs.map(function (f) { return document.fonts.load(f, 'A₹'); }))
+      .then(function () { draw(state); }, function () {});
+    document.fonts.ready.then(function () { draw(state); });
+  }
+
+  function fileName() {
+    var d = new Date();
+    var p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return 'Crescent-Menu-' + d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '.png';
+  }
+  function toBlob() {
+    draw(state);
+    return new Promise(function (res, rej) { canvas.toBlob(function (b) { b ? res(b) : rej(new Error('blob')); }, 'image/png'); });
+  }
+
+  var inViewer = !!(window.claude && typeof window.claude.use === 'function');
+  var downloadsP = inViewer ? window.claude.use('downloads') : Promise.resolve(null);
+
+  // Native share (outside the Claude viewer only), so the picture can go straight to WhatsApp.
+  if (!inViewer && navigator.canShare && typeof File === 'function') {
+    try {
+      var probe = new File([new Blob(['x'], { type: 'image/png' })], 'p.png', { type: 'image/png' });
+      if (navigator.canShare({ files: [probe] })) $('share').hidden = false;
+    } catch (e) {}
+  }
+
+  $('save').addEventListener('click', function () {
+    var btn = this; btn.disabled = true; statusEl.textContent = 'Preparing the picture…';
+    toBlob().then(function (blob) {
+      return downloadsP.then(function (dl) {
+        if (dl) {
+          return dl.save({ filename: fileName(), data: blob }).then(function () {
+            statusEl.textContent = 'Saved. You can now post it in the group.';
+          }, function (err) {
+            var code = err && err.code;
+            if (code === 'declined') statusEl.textContent = 'Save cancelled.';
+            else if (code === 'rate_limited') statusEl.textContent = 'A save is already waiting for you to confirm.';
+            else statusEl.textContent = 'Saving isn’t available here. Press and hold the poster and choose Save image.';
+          });
+        }
+        if (inViewer) { statusEl.textContent = 'Saving isn’t available here. Press and hold the poster and choose Save image.'; return; }
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a'); a.href = url; a.download = fileName();
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+        statusEl.textContent = 'Saved to your downloads.';
+      });
+    }).catch(function () {
+      statusEl.textContent = 'Couldn’t make the picture. Press and hold the poster and choose Save image.';
+    }).then(function () { btn.disabled = false; });
+  });
+
+  $('share').addEventListener('click', function () {
+    var btn = this; btn.disabled = true;
+    toBlob().then(function (blob) {
+      var file = new File([blob], fileName(), { type: 'image/png' });
+      return navigator.share({ files: [file] }).then(function () {
+        statusEl.textContent = 'Shared.';
+      });
+    }).catch(function (e) {
+      statusEl.textContent = (e && e.name === 'AbortError') ? 'Share cancelled.' : 'Sharing didn’t work. Use Save image instead.';
+    }).then(function () { btn.disabled = false; });
+  });
+})();
+</script>
+</body></html>
