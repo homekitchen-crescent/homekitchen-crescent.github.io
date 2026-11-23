@@ -3,7 +3,8 @@
   const C = Crescent, $ = id => document.getElementById(id);
   const PW_KEY = 'crescent-admin';
   const FIELDS = ['d1', 'd2', 'd3', 'd4', 'p1', 'p2', 'p3', 'p4', 'lim1', 'lim2', 'lim3', 'lim4', 'r1', 'r2', 'side',
-    'mealPrice', 'itemPrice', 'rotiPrice', 'mealLimit', 'itemLimit', 'rotiLimit', 'rotisPerMeal', 'orderBy', 'pickup', 'phone', 'flat', 'scheme'];
+    'mealPrice', 'itemPrice', 'rotiPrice', 'mealLimit', 'itemLimit', 'rotiLimit', 'orderBy', 'pickup', 'phone', 'flat', 'scheme'];
+  const ROTIS_PER_MEAL = '3';
   const DEFAULTS = {
     Lunch: { r1: 'Rice', r2: 'Roti', side: 'Curd', mealPrice: '200', itemPrice: '100', rotiPrice: '12', orderBy: '11:00', pickup: '1:00 PM – 1:30 PM', scheme: 'Tomato Red' },
     Dinner: { p1: '175', p2: '175', p3: '175', p4: '175', orderBy: '17:00', pickup: '7:30 PM – 8:00 PM', scheme: 'Indigo Night' },
@@ -303,7 +304,7 @@
   });
 
   function readMenuForm() {
-    const f = {};
+    const f = { rotisPerMeal: ROTIS_PER_MEAL };
     FIELDS.forEach(k => { f[k] = $(k).value.trim(); });
     return f;
   }

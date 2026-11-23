@@ -79,6 +79,14 @@
   var back = (await api.post({ action: 'adminData', password: pw })).orders[0];
   ok(back.name === '=HYPERLINK("x")' && back.phone === '+91 98765 43210' && back.flat === '0042', 'text stored as typed (no formulas, keeps leading zeros)');
 
+  // 3 rotis per roti meal, with only a roti limit set.
+  var R = (await api.post({ action: 'saveMenu', password: pw, menu: Object.assign({}, lunch, { date: day(3), mealLimit: '', itemLimit: '', rotiLimit: '10', rotisPerMeal: '3' }) })).menu;
+  await api.post(Object.assign({ action: 'placeOrder', menuId: R.id, qty: { m1: 4, m2: 2, x: 1 } }, who));
+  var rl = (await api.get('menus')).menus.filter(function (m) { return m.id === R.id; })[0].left;
+  ok(rl.rotis === 3 && rl.meals === null, '10 rotis - 2 roti meals - 1 extra = 3 left, rice meals use none');
+  await rejects(api.post(Object.assign({ action: 'placeOrder', menuId: R.id, qty: { m2: 1, x: 1 } }, who2)), /only 3 rotis left/, 'meal + extra over the roti limit refused');
+  ok((await api.post(Object.assign({ action: 'placeOrder', menuId: R.id, qty: { m2: 1 } }, who2))).order.id > 0, 'last 3 rotis make one more roti meal');
+
   // Customers changing their own order (phone + flat), on a fresh menu.
   var F = (await api.post({ action: 'saveMenu', password: pw, menu: Object.assign({}, lunch, { date: day(2) }) })).menu;
   function mine(action, extra, w) { return api.post(Object.assign({ action: action, menuId: F.id }, w || who, extra || {})); }
