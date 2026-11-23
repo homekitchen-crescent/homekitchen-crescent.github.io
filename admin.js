@@ -240,6 +240,7 @@
     e.preventDefault();
     if (!addPicker.count()) return say($('addStatus'), 'Pick at least one item.', true);
     if (!$('aName').value.trim()) return say($('addStatus'), 'Add a name.', true);
+    if ($('aFlat').value && !/^\d{4}$/.test($('aFlat').value)) return say($('addStatus'), 'The flat number should be 4 digits.', true);
     $('addBtn').disabled = true;
     say($('addStatus'), 'Adding…');
     admin('addOrder', { menuId: selectedMenu, qty: addPicker.qty(), name: $('aName').value, phone: $('aPhone').value, flat: $('aFlat').value, notes: $('aNotes').value })

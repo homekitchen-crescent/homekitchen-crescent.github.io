@@ -31,6 +31,9 @@ function doPost(e) {
   return respond_(function () {
     var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     if (body.action === 'placeOrder') return withLock_(function () { return { order: placeOrder_(body, false) }; });
+    if (body.action === 'findOrder') return findOrder_(body);
+    if (body.action === 'updateOrder') return withLock_(function () { return { order: updateOrder_(body) }; });
+    if (body.action === 'cancelOrder') return withLock_(function () { return { order: cancelOrder_(body) }; });
 
     checkPassword_(body.password);
     switch (body.action) {
@@ -307,20 +310,82 @@ function bill_(m, q) {
   return { items: lines.join(', '), total: total };
 }
 
+// Phone numbers match on their last 10 digits, so +91 and spaces don't matter.
+function phoneKey_(v) { return str_(v).replace(/\D/g, '').slice(-10); }
+
+// A customer's own order on a menu: same phone and flat, and not completed or cancelled. The newest wins.
+function ownOrder_(m, b, orders) {
+  var phone = phoneKey_(b.phone), flat = str_(b.flat);
+  if (phone.length < 10 || !/^\d{4}$/.test(flat)) return null;
+  return orders.filter(function (o) {
+    return o.menuId === m.id && o.status === 'Pending' && phoneKey_(o.phone) === phone && o.flat === flat;
+  }).sort(function (a, b) { return b.id - a.id; })[0] || null;
+}
+
+function openMenu_(id) {
+  var m = findMenu_(id);
+  if (!isOpen_(m)) fail_('Sorry, orders for this ' + m.meal.toLowerCase() + ' have closed.', 'closed');
+  return m;
+}
+
+// Limits left for someone changing their order: what they already have doesn't count against them.
+function leftWithout_(m, orders, own) {
+  return stats_(m, orders.filter(function (o) { return o !== own; })).left;
+}
+
+function needOwnOrder_(m, b, orders) {
+  var own = ownOrder_(m, b, orders);
+  if (!own) fail_('We couldn’t find an order to change. It may already be completed or cancelled.', 'noorder');
+  return own;
+}
+
+// Only the order itself goes back, never the name.
+function findOrder_(b) {
+  var m = openMenu_(b.menuId), orders = readOrders_(), own = ownOrder_(m, b, orders);
+  if (!own) return { order: null };
+  return { order: { id: own.id, qty: own.qty, notes: own.notes, total: own.total }, left: leftWithout_(m, orders, own) };
+}
+
+function updateOrder_(b) {
+  var m = openMenu_(b.menuId), orders = readOrders_(), o = needOwnOrder_(m, b, orders);
+  var name = str_(b.name).slice(0, 60);
+  if (!name) fail_('Please add a name.');
+  var q = cleanQty_(m, b.qty);
+  var problem = overLimit_(m, leftWithout_(m, orders, o), q);
+  if (problem) fail_(problem, 'limit');
+
+  var bill = bill_(m, q);
+  o.name = name; o.items = bill.items; o.total = bill.total; o.notes = str_(b.notes).slice(0, 200); o.qty = q;
+  var sh = sheet_('Orders', ORDER_HEADERS);
+  sh.getRange(o.row, 5, 1, 1).setValues([[text_(o.name)]]);
+  sh.getRange(o.row, 8, 1, 2).setValues([[text_(o.items), o.total]]);
+  sh.getRange(o.row, 13, 1, 1).setValues([[text_(o.notes)]]);
+  sh.getRange(o.row, 15, 1, 1).setValues([[text_(JSON.stringify(q))]]);
+  delete o.row;
+  return o;
+}
+
+function cancelOrder_(b) {
+  var m = openMenu_(b.menuId), o = needOwnOrder_(m, b, readOrders_());
+  return { id: setOrderStatus_(o.id, 'Cancelled').id };
+}
+
 // Customers can only order while a menu is open. Orders you add yourself skip the order-by time but still respect the limits.
 function placeOrder_(b, byAdmin) {
-  var m = findMenu_(b.menuId);
-  if (!byAdmin && !isOpen_(m)) fail_('Sorry, orders for this ' + m.meal.toLowerCase() + ' have closed.', 'closed');
+  var m = byAdmin ? findMenu_(b.menuId) : openMenu_(b.menuId);
 
-  var name = str_(b.name).slice(0, 60), phone = str_(b.phone).slice(0, 20), flat = str_(b.flat).slice(0, 30), notes = str_(b.notes).slice(0, 200);
+  var name = str_(b.name).slice(0, 60), phone = str_(b.phone).slice(0, 20), flat = str_(b.flat), notes = str_(b.notes).slice(0, 200);
   if (!name) fail_('Please add a name.');
   if (!byAdmin) {
     if (phone.replace(/\D/g, '').length < 10) fail_('Please add a 10-digit phone number.');
     if (!flat) fail_('Please add your flat number.');
   }
+  if (flat && !/^\d{4}$/.test(flat)) fail_('The flat number should be 4 digits.');
+
+  var orders = readOrders_();
+  if (!byAdmin && ownOrder_(m, b, orders)) fail_('You already have an order for this ' + m.meal.toLowerCase() + '.', 'exists');
 
   var q = cleanQty_(m, b.qty);
-  var orders = readOrders_();
   var problem = overLimit_(m, stats_(m, orders).left, q);
   if (problem) fail_(problem, 'limit');
 

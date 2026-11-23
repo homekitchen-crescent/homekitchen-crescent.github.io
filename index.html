@@ -24,6 +24,8 @@
 .receipt li { display: flex; justify-content: space-between; gap: 12px; }
 .receipt li.total { border-top: 1px solid var(--line); padding-top: 8px; font-weight: 700; }
 .big { font-family: var(--display); font-weight: 800; font-size: 44px; line-height: 1; color: var(--accent); }
+#mine { display: flex; flex-direction: column; gap: 10px; }
+#mine[hidden] { display: none; }
 form { display: flex; flex-direction: column; gap: 16px; }
 </style>
 </head>
@@ -72,7 +74,14 @@ form { display: flex; flex-direction: column; gap: 16px; }
       </div>
       <div class="fields">
         <label for="phone">Phone<input id="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="10-digit mobile" required></label>
-        <label for="flat">Flat number<input id="flat" autocomplete="off" maxlength="30" placeholder="e.g. D-1203" required></label>
+        <label for="flat">Flat number<input id="flat" inputmode="numeric" pattern="[0-9]{4}" autocomplete="off" maxlength="4" placeholder="4 digits, e.g. 1203" required></label>
+      </div>
+      <div id="mine" class="banner" hidden>
+        <p id="mineMsg"></p>
+        <div class="actions">
+          <button type="button" class="quiet" id="mineShow">Show my earlier order</button>
+          <button type="button" class="quiet" id="mineCancel">Cancel my order</button>
+        </div>
       </div>
       <label for="notes">Anything we should know? (optional)<textarea id="notes" maxlength="200" placeholder="e.g. less spicy, coming at 1:15"></textarea></label>
       <p class="hint">Pay by UPI when you pick up. We’ll show you the QR code.</p>
@@ -87,12 +96,12 @@ form { display: flex; flex-direction: column; gap: 16px; }
   </form>
 
   <section id="done" class="card" hidden aria-live="polite">
-    <p class="big">Order placed</p>
+    <p class="big" id="dTitle">Order placed</p>
     <p>Order <strong id="dId"></strong> for <strong id="dWho"></strong></p>
     <ul class="receipt" id="dItems"></ul>
     <p id="dPickup"></p>
     <p class="hint" id="dHelp"></p>
-    <div class="actions"><button type="button" class="secondary" id="again">Place another order</button></div>
+    <div class="actions"><button type="button" class="secondary" id="again">Change my order</button></div>
   </section>
 </div>
 
@@ -103,6 +112,7 @@ form { display: flex; flex-direction: column; gap: 16px; }
   const C = Crescent, $ = id => document.getElementById(id);
   const DETAILS = 'crescent-customer';
   let menus = [], current = null;
+  let mine = null, loaded = false, lookups = 0; // the customer's own order on this menu, and whether the picker is showing it
 
   const picker = C.Picker($('picker'), refreshBar);
 
@@ -126,6 +136,95 @@ form { display: flex; flex-direction: column; gap: 16px; }
     $('pickup').textContent = current.pickup || '—';
     $('place').textContent = current.flat || '—';
     picker.setMenu(current);
+    if (loaded) $('notes').value = '';
+    mine = null; loaded = false;
+    renderMine();
+    return lookup();
+  }
+
+  // ---------- Changing an order: same phone and flat, until the order-by time ----------
+
+  function who() { return { name: $('name').value.trim(), phone: $('phone').value.trim(), flat: $('flat').value.trim() }; }
+  function canLookUp(w) { return w.phone.replace(/\D/g, '').length >= 10 && /^\d{4}$/.test(w.flat); }
+
+  function renderMine() {
+    $('mine').hidden = !mine;
+    $('placeBtn').textContent = mine ? 'Update order' : 'Place order';
+    if (!mine) return;
+    const until = C.fmtTime(current.orderBy);
+    $('mineMsg').textContent = `You already have order #${mine.id} (${C.rupees(mine.total)}). `
+      + (loaded ? 'It’s filled in above. ' : 'Updating will replace it with what you’ve picked above. ')
+      + `You can change it ${until ? 'until ' + until : 'while orders are open'}.`;
+    $('mineShow').hidden = loaded;
+    $('mineCancel').textContent = 'Cancel my order';
+    delete $('mineCancel').dataset.sure;
+  }
+
+  function showMine() {
+    loaded = true;
+    $('notes').value = mine.notes;
+    picker.setMenu(Object.assign({}, current, { left: mine.left }), mine.qty);
+    renderMine();
+  }
+
+  // Resolves once the order (if there is one) is on screen. Things already picked are never overwritten.
+  function lookup() {
+    const w = who(), run = ++lookups;
+    function forget() {
+      if (!mine) return;
+      const picked = loaded ? {} : picker.qty();
+      if (loaded) $('notes').value = '';
+      mine = null; loaded = false;
+      picker.setMenu(current, picked);
+      renderMine();
+    }
+    if (!current || !canLookUp(w)) { forget(); return Promise.resolve(); }
+    return C.post({ action: 'findOrder', menuId: current.id, phone: w.phone, flat: w.flat }).then(d => {
+      if (run !== lookups) return;
+      if (!d.order) return forget();
+      if (mine && mine.id === d.order.id) return;
+      forget();
+      mine = Object.assign({ left: d.left }, d.order);
+      if (!picker.count()) return showMine();
+      picker.setMenu(Object.assign({}, current, { left: mine.left }), picker.qty());
+      if (!$('notes').value) $('notes').value = mine.notes;
+      renderMine();
+    }).catch(() => {}); // Placing the order checks again, so a failed lookup can't make a second order.
+  }
+
+  let lookupTimer = null;
+  ['phone', 'flat'].forEach(k => $(k).addEventListener('input', () => {
+    if (k === 'flat') $('flat').value = $('flat').value.replace(/\D/g, '').slice(0, 4);
+    lookups++; // anything still on its way is for the old details
+    clearTimeout(lookupTimer);
+    lookupTimer = setTimeout(lookup, 400);
+  }));
+
+  $('mineShow').addEventListener('click', showMine);
+  // Cancelling asks for a second tap instead of a pop-up.
+  $('mineCancel').addEventListener('click', () => {
+    const b = $('mineCancel'), w = who(), id = current.id;
+    if (!b.dataset.sure) {
+      b.dataset.sure = '1';
+      b.textContent = 'Tap again to cancel';
+      setTimeout(() => { if (!b.disabled && b.dataset.sure) { delete b.dataset.sure; b.textContent = 'Cancel my order'; } }, 4000);
+      return;
+    }
+    b.disabled = true;
+    say('Cancelling…');
+    C.post({ action: 'cancelOrder', menuId: id, phone: w.phone, flat: w.flat })
+      .then(() => refreshMenus(id, 'Your order is cancelled.', false), err => refreshMenus(id, err.message, true))
+      .then(() => { b.disabled = false; });
+  });
+
+  // Reloads the menu and what's left, keeping a message on screen.
+  function refreshMenus(id, msg, isError) {
+    return C.get('menus').then(d => {
+      menus = d.menus;
+      if (!menus.length) return show('none');
+      if (!menus.some(m => m.id === id)) return load();
+      return choose(id);
+    }).catch(() => {}).then(() => say(msg, isError));
   }
 
   function load(keepId) {
@@ -149,6 +248,7 @@ form { display: flex; flex-direction: column; gap: 16px; }
 
   const saved = C.store.get(DETAILS) || {};
   ['name', 'phone', 'flat'].forEach(k => { $(k).value = saved[k] || ''; });
+  $('flat').value = /^\D*(\d{4})\D*$/.test(saved.flat || '') ? RegExp.$1 : '';
 
   function say(msg, isError) {
     $('status').textContent = msg;
@@ -157,36 +257,37 @@ form { display: flex; flex-direction: column; gap: 16px; }
 
   $('orderForm').addEventListener('submit', e => {
     e.preventDefault();
-    const who = { name: $('name').value.trim(), phone: $('phone').value.trim(), flat: $('flat').value.trim() };
+    const w = who(), updating = !!mine;
     if (!picker.count()) return say('Pick at least one item.', true);
-    if (!who.name) { $('name').focus(); return say('Please add your name.', true); }
-    if (who.phone.replace(/\D/g, '').length < 10) { $('phone').focus(); return say('Please add a 10-digit phone number.', true); }
-    if (!who.flat) { $('flat').focus(); return say('Please add your flat number.', true); }
+    if (!w.name) { $('name').focus(); return say('Please add your name.', true); }
+    if (w.phone.replace(/\D/g, '').length < 10) { $('phone').focus(); return say('Please add a 10-digit phone number.', true); }
+    if (!/^\d{4}$/.test(w.flat)) { $('flat').focus(); return say('Please add your 4-digit flat number.', true); }
 
     const btn = $('placeBtn');
     btn.disabled = true;
-    say('Placing your order…');
-    C.post(Object.assign({ action: 'placeOrder', menuId: current.id, qty: picker.qty(), notes: $('notes').value.trim() }, who)).then(d => {
-      C.store.set(DETAILS, who);
-      showDone(d.order);
+    say(updating ? 'Updating your order…' : 'Placing your order…');
+    C.post(Object.assign({ action: updating ? 'updateOrder' : 'placeOrder', menuId: current.id, qty: picker.qty(), notes: $('notes').value.trim() }, w)).then(d => {
+      C.store.set(DETAILS, w);
+      showDone(d.order, updating);
     }).catch(err => {
       say(err.message, true);
+      if (err.code === 'exists' || err.code === 'noorder') {
+        return lookup().then(() => {
+          if (err.code === 'exists' && mine) say(err.message + ' Check it, then press Update order.', true);
+          $('placeBtn').disabled = !picker.count();
+        });
+      }
       // Someone else may have taken the last few: reload the counts so the steppers are right again.
       if (err.code === 'limit' || err.code === 'closed' || err.code === 'gone') {
-        const id = current.id;
-        C.get('menus').then(d => {
-          menus = d.menus;
-          if (!menus.length) return show('none');
-          if (menus.some(m => m.id === id)) choose(id); else load();
-          say(err.message + ' We’ve updated what’s left. Please check your order again.', true);
-        }).catch(() => {});
+        refreshMenus(current.id, err.message + ' We’ve updated what’s left. Please check your order again.', true);
       }
       btn.disabled = !picker.count();
     });
   });
 
-  function showDone(o) {
+  function showDone(o, updated) {
     const m = current;
+    $('dTitle').textContent = updated ? 'Order updated' : 'Order placed';
     $('dId').textContent = '#' + o.id;
     $('dWho').textContent = o.name + ', ' + o.flat;
     $('dItems').innerHTML = picker.bill().rows.map(r => `<li><span>${r.qty} × ${C.esc(r.label)}</span><span class="num">${C.rupees(r.amount)}</span></li>`).join('')

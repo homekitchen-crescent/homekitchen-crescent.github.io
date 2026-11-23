@@ -21,7 +21,8 @@
   var lunch = { date: T, meal: 'Lunch', d1: 'Dal Tadka', d2: 'Aloo Gobi', d3: 'Jeera Rice', d4: 'Salad', r1: 'Rice', r2: 'Roti', side: 'Curd',
     mealPrice: '200', itemPrice: '100', rotiPrice: '12', mealLimit: '5', itemLimit: '3', rotiLimit: '20', rotisPerMeal: '4', orderBy: '23:59', pickup: '1 PM' };
   var dinner = { date: T, meal: 'Dinner', d1: 'Rajma Chawal', d2: 'Veg Pulao', d3: '', d4: '', p1: '160', p2: '175', lim1: '2', lim2: '', orderBy: '23:59', pickup: '8 PM' };
-  var who = { name: 'Asha', phone: '98765 43210', flat: 'D-1203' };
+  var who = { name: 'Asha', phone: '98765 43210', flat: '1203' };
+  var who2 = { name: 'Ravi', phone: '91234 56789', flat: '2204' };
 
   await rejects(api.post({ action: 'adminData', password: 'nope' }), /password/, 'wrong admin password refused');
   await rejects(api.post({ action: 'saveMenu', password: pw, menu: Object.assign({}, lunch, { rotisPerMeal: '' }) }), /how many rotis/, 'roti limit needs rotis-per-meal');
@@ -40,16 +41,16 @@
   var left = (await api.get('menus')).menus[0].left;
   ok(left.meals === 2 && left.items === 2 && left.rotis === 20 - (2 * 4 + 3), 'left after order: meals 2, items 2, rotis ' + left.rotis);
 
-  await rejects(api.post(Object.assign({ action: 'placeOrder', menuId: L.id, qty: { m1: 3 } }, who)), /only 2 meals left/, 'meal limit enforced');
-  await rejects(api.post(Object.assign({ action: 'placeOrder', menuId: L.id, qty: { m2: 1, x: 6 } }, who)), /only 9 rotis left/, 'roti meals count against roti limit');
-  await rejects(api.post(Object.assign({ action: 'placeOrder', menuId: L.id, qty: { i2: 3 } }, who)), /only 2 single items/, 'single item limit enforced');
-  await rejects(api.post(Object.assign({ action: 'placeOrder', menuId: L.id, qty: {} }, who)), /at least one/, 'empty order refused');
+  await rejects(api.post(Object.assign({ action: 'placeOrder', menuId: L.id, qty: { m1: 3 } }, who2)), /only 2 meals left/, 'meal limit enforced');
+  await rejects(api.post(Object.assign({ action: 'placeOrder', menuId: L.id, qty: { m2: 1, x: 6 } }, who2)), /only 9 rotis left/, 'roti meals count against roti limit');
+  await rejects(api.post(Object.assign({ action: 'placeOrder', menuId: L.id, qty: { i2: 3 } }, who2)), /only 2 single items/, 'single item limit enforced');
+  await rejects(api.post(Object.assign({ action: 'placeOrder', menuId: L.id, qty: {} }, who2)), /at least one/, 'empty order refused');
   await rejects(api.post({ action: 'placeOrder', menuId: L.id, qty: { m1: 1 }, name: 'A', phone: '123', flat: 'x' }), /10-digit/, 'phone checked');
 
   var b1 = (await api.post(Object.assign({ action: 'placeOrder', menuId: D.id, qty: { b1: 2, b2: 5 } }, who))).order;
   ok(b1.total === 2 * 160 + 5 * 175, 'dinner bowls priced separately (₹' + b1.total + ')');
-  await rejects(api.post(Object.assign({ action: 'placeOrder', menuId: D.id, qty: { b1: 1 } }, who)), /Rajma Chawal is sold out/, 'per-bowl limit enforced');
-  var b2 = (await api.post(Object.assign({ action: 'placeOrder', menuId: D.id, qty: { b2: 9 } }, who))).order;
+  await rejects(api.post(Object.assign({ action: 'placeOrder', menuId: D.id, qty: { b1: 1 } }, who2)), /Rajma Chawal is sold out/, 'per-bowl limit enforced');
+  var b2 = (await api.post(Object.assign({ action: 'placeOrder', menuId: D.id, qty: { b2: 9 } }, who2))).order;
   ok(b2.id === 3, 'bowl with no limit keeps taking orders');
 
   // Cancelling frees up the bowls; bringing it back has to fit again.
@@ -77,6 +78,35 @@
   var weird = (await api.post({ action: 'placeOrder', menuId: D.id, qty: { b2: 1 }, name: '=HYPERLINK("x")', phone: '+91 98765 43210', flat: '0042' })).order;
   var back = (await api.post({ action: 'adminData', password: pw })).orders[0];
   ok(back.name === '=HYPERLINK("x")' && back.phone === '+91 98765 43210' && back.flat === '0042', 'text stored as typed (no formulas, keeps leading zeros)');
+
+  // Customers changing their own order (phone + flat), on a fresh menu.
+  var F = (await api.post({ action: 'saveMenu', password: pw, menu: Object.assign({}, lunch, { date: day(2) }) })).menu;
+  function mine(action, extra, w) { return api.post(Object.assign({ action: action, menuId: F.id }, w || who, extra || {})); }
+  ok((await mine('findOrder')).order === null, 'no order yet');
+  await rejects(mine('placeOrder', { qty: { m1: 1 }, flat: 'D-1203' }), /4 digits/, 'flat must be 4 digits');
+  var c1 = (await mine('placeOrder', { qty: { m1: 4, i1: 1 }, notes: 'less spicy' })).order;
+  await rejects(mine('placeOrder', { qty: { m1: 1 } }), /already have/, 'second order refused');
+  var f = await mine('findOrder', { phone: '+91 9876543210' });
+  ok(f.order.id === c1.id && f.order.qty.m1 === 4 && f.order.notes === 'less spicy' && f.order.name === undefined, 'found by phone and flat, name not shown');
+  ok(f.left.meals === 5 && f.left.items === 3, 'own order not counted in what is left');
+  ok((await mine('findOrder', { flat: '9999' })).order === null && (await mine('findOrder', { phone: '9000000000' })).order === null, 'phone and flat must both match');
+  var u = (await mine('updateOrder', { qty: { m1: 5 }, notes: '' })).order;
+  ok(u.id === c1.id && u.total === 1000, 'order updated up to the limit, same number');
+  await rejects(mine('updateOrder', { qty: { m1: 6 } }), /only 5 meals/, 'update respects limits');
+  await rejects(mine('updateOrder', { qty: { i1: 1 } }, who2), /couldn’t find/, 'someone else cannot update');
+  var rows = (await api.post({ action: 'adminData', password: pw })).orders.filter(function (o) { return o.menuId === F.id; });
+  ok(rows.length === 1 && rows[0].total === 1000 && rows[0].items === '5 × Meal with Rice' && rows[0].notes === '' && rows[0].flat === '1203' && rows[0].status === 'Pending', 'sheet row updated in place');
+  await mine('cancelOrder');
+  ok((await mine('findOrder')).order === null, 'cancelled by customer');
+  var c2 = (await mine('placeOrder', { qty: { m1: 5 } })).order;
+  ok(c2.id !== c1.id, 'can order again after cancelling');
+  await api.post({ action: 'setOrderStatus', password: pw, id: c2.id, status: 'Completed' });
+  await rejects(mine('updateOrder', { qty: { m1: 1 } }), /couldn’t find/, 'completed order cannot be changed');
+  await api.post({ action: 'setOrderStatus', password: pw, id: c2.id, status: 'Pending' });
+  await api.post({ action: 'setMenuStatus', password: pw, id: F.id, status: 'Closed' });
+  await rejects(mine('findOrder'), /closed/, 'no lookup after closing');
+  await rejects(mine('updateOrder', { qty: { m1: 1 } }), /closed/, 'no update after closing');
+  await rejects(mine('cancelOrder'), /closed/, 'no cancelling after closing');
 
   lines.unshift(fails ? fails + ' FAILED' : 'ALL PASSED');
   document.getElementById('out').textContent = lines.join('\n');

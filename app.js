@@ -188,7 +188,12 @@
     });
 
     return {
-      setMenu(m) { menu = m; q = {}; render(); },
+      // Optionally starts with quantities already picked; anything no longer on the menu is dropped.
+      setMenu(m, picked) {
+        menu = m; q = {};
+        C.lines(m).forEach(l => { if (picked && picked[l.k]) q[l.k] = picked[l.k]; });
+        render();
+      },
       qty: () => Object.assign({}, q),
       bill: () => (menu ? C.bill(menu, q) : { rows: [], total: 0 }),
       count: () => Object.values(q).reduce((a, b) => a + b, 0),

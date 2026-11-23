@@ -125,7 +125,7 @@ tfoot td { font-weight: 700; border-bottom: 0; }
             <div class="fields three">
               <label for="aName">Name<input id="aName" maxlength="60" autocapitalize="words" required></label>
               <label for="aPhone">Phone<input id="aPhone" type="tel" maxlength="20"></label>
-              <label for="aFlat">Flat<input id="aFlat" maxlength="30"></label>
+              <label for="aFlat">Flat<input id="aFlat" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="4 digits"></label>
             </div>
             <label for="aNotes">Notes<input id="aNotes" maxlength="200"></label>
             <div class="actions"><button type="submit" id="addBtn">Add order · <span id="addTotal">₹0</span></button><button type="button" class="quiet" id="addCancel">Cancel</button></div>
