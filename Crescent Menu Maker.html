@@ -304,7 +304,6 @@ button:disabled { opacity: 0.6; cursor: progress; }
       // Dinner: a borderless price list. Each bowl's name on the left, its own price on the right, soft dots between.
       var bowls = [1, 2, 3, 4].map(function (i) { return { name: st['d' + i], price: st['p' + i] }; })
         .filter(function (b) { return b.name; });
-      if (!bowls.length) bowls = [1, 2, 3, 4].map(function () { return { name: '—', price: '' }; });
       var dishes = bowls.map(function (b) { return b.name; });
       var prices = bowls.map(function (b) { return b.price ? rupee(b.price) : '—'; });
       var pRight = 964, psz = 52, pw;
@@ -357,11 +356,10 @@ button:disabled { opacity: 0.6; cursor: progress; }
       });
     } else {
     avail = 692 - 116;
-    var left = [st.d1, st.d2, st.d3].map(function (d) { return d || '—'; });
-    var d4 = st.d4 || '—';
-    var r1 = st.r1 || '', r2 = st.r2 || '', side = st.side || '—';
+    var left = [st.d1, st.d2, st.d3].map(function (d) { return d || ''; });
+    var d4 = st.d4 || '';
+    var r1 = st.r1 || '', r2 = st.r2 || '', side = st.side || '';
     if (!r1 && r2) { r1 = r2; r2 = ''; }
-    if (!r1) r1 = '—';
     var combo = r2 ? r1 + ' or ' + r2 : r1;
     var size = 36, gap = 48, wl, wr;
     for (;;) {

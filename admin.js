@@ -284,8 +284,8 @@
       note = `Already published (${stateOf(existing).text.toLowerCase()}, ${C.plural(existing.stats.orders, 'order')}). Saving updates it.`;
     } else {
       const last = data.menus.filter(m => m.meal === meal).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
-      src = Object.assign({}, DEFAULTS.both, DEFAULTS[meal], last || {}, { d1: '', d2: '', d3: '', d4: '' });
-      note = last ? `New menu. Prices, times and limits copied from ${C.fmtDate(last.date)}.` : 'New menu.';
+      src = Object.assign({}, DEFAULTS.both, DEFAULTS[meal], last || {});
+      note = last ? `New menu, not published yet. Everything is copied from ${C.fmtDate(last.date)}.` : 'New menu.';
     }
     FIELDS.forEach(k => { $(k).value = src[k] == null ? '' : src[k]; });
     if (!CrescentPoster.SCHEMES[schemeSel.value]) schemeSel.value = DEFAULTS[meal].scheme;
